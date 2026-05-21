@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/toon-format/toon/actions/workflows/ci.yml/badge.svg)](https://github.com/toon-format/toon/actions)
 [![npm version](https://img.shields.io/npm/v/@toon-format/toon.svg?labelColor=1b1b1f&color=fef3c0)](https://www.npmjs.com/package/@toon-format/toon)
-[![SPEC v3.2](https://img.shields.io/badge/spec-v3.2-fef3c0?labelColor=1b1b1f)](https://github.com/toon-format/spec)
+[![SPEC v3.3](https://img.shields.io/badge/spec-v3.3-fef3c0?labelColor=1b1b1f)](https://github.com/toon-format/spec)
 [![npm downloads (total)](https://img.shields.io/npm/dt/@toon-format/toon.svg?labelColor=1b1b1f&color=fef3c0)](https://www.npmjs.com/package/@toon-format/toon)
 [![License: MIT](https://img.shields.io/badge/license-MIT-fef3c0?labelColor=1b1b1f)](./LICENSE)
 
@@ -133,13 +133,6 @@ hikes[3]{id,name,distanceKm,elevationGain,companion,wasSunny}:
 - 📐 **Minimal Syntax:** Uses indentation instead of braces and minimizes quoting, giving YAML-like readability with CSV-style compactness.
 - 🧺 **Tabular Arrays:** Uniform arrays of objects collapse into tables that declare fields once and stream row values line by line.
 - 🌐 **Multi-Language Ecosystem:** Spec-driven implementations in TypeScript, Python, Go, Rust, .NET, and other languages.
-
-## What's New in v3.2
-
-- Strict mode rejects duplicate sibling keys; with `strict: false` the last value wins.
-- Malformed array headers (`[03]`, `[1] foo:`, header/field delimiter mismatch) error in strict mode instead of silently degrading.
-- Tabular form excludes arrays that contain an empty `{}` element – those fall back to the expanded list form.
-- Nested arrays-of-objects can appear as list items via an explicit `- [N]:` header.
 
 ## Media Type & File Extension
 

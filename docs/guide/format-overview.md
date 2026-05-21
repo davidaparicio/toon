@@ -334,11 +334,12 @@ Other escapes (e.g., `\x`, `\0`, `\b`) are always rejected, as are lone-surrogat
 
 ### Type Conversions
 
-Numbers are emitted in canonical decimal form (no exponent notation, no trailing zeros). Non-JSON types are normalized before encoding:
+Numbers are emitted in canonical decimal form for values in the §2 carve-out range; exponent notation is permitted outside. Non-JSON types are normalized before encoding:
 
 | Input | Output |
 |-------|--------|
-| Finite number | Canonical decimal (e.g., `1e6` → `1000000`, `1.5000` → `1.5`, `-0` → `0`) |
+| Finite number in `[1e-6, 1e21)` (or zero) | Canonical decimal (e.g., `1e6` → `1000000`, `1.5000` → `1.5`, `-0` → `0`) |
+| Finite number outside that range | Exponent form permitted (e.g., `1e-7`, `1e+21`) |
 | `NaN`, `Infinity`, `-Infinity` | `null` |
 | `BigInt` (within safe range) | Number |
 | `BigInt` (out of range) | Quoted decimal string (e.g., `"9007199254740993"`) |

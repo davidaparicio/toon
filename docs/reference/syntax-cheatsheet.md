@@ -352,7 +352,8 @@ See [Format Overview – Key Folding](/guide/format-overview#key-folding-optiona
 
 | Input | Output |
 |-------|--------|
-| Finite number | Canonical decimal (no exponent, no trailing zeros) |
+| Finite number in `[1e-6, 1e21)` (or zero) | Canonical decimal |
+| Finite number outside that range | Exponent form permitted |
 | `NaN`, `Infinity`, `-Infinity` | `null` |
 | `BigInt` (safe range) | Number |
 | `BigInt` (out of range) | Quoted decimal string |

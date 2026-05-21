@@ -40,7 +40,7 @@ Where $\Omega$ represents the data structure under comparison. If $\Delta > 0$, 
   - must be quoted in JSON, and
   - can be left unquoted in TOON (no characters that would force quoting).
   Many examples assume values are numbers, booleans, null, or TOON-safe strings that can be unquoted in TOON but must be quoted in JSON.
-- **Numbers**: Both formats are assumed to use the same canonical decimal representation (no exponent notation), matching TOON's requirement. JSON could use exponent forms; we ignore that here to isolate structural differences.
+- **Numbers**: For this analysis only, both formats are assumed to use the same canonical decimal representation. JSON could use exponent forms; we ignore that here to isolate structural differences.
 - **ASCII/UTF-8**: Keys and structural tokens are assumed ASCII, so byte length equals character count ($|x|_{\text{utf8}} = |x|_{\text{char}}$). Non-ASCII content affects both formats similarly and does not change the structural conclusions.
 - **Nesting depth**: Closed-form expressions are given for flat structures and a single level of nesting. Each additional nesting level in TOON adds 2 bytes of indentation per nested line. At sufficient depth, the braces of compact JSON can win over TOON's indentation (as seen in [When Not to Use TOON](/guide/getting-started#when-not-to-use-toon)).
 - **Byte vs token count**: Modern LLM tokenizers operate over UTF-8 bytes, so byte length is a good upper bound and first-order proxy for token count, even though the mapping is not exactly linear.

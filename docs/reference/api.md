@@ -59,7 +59,8 @@ Non-JSON-serializable values are normalized before encoding:
 | Input | Output |
 |-------|--------|
 | `Object` with `toJSON()` method | Result of calling `toJSON()`, recursively normalized |
-| Finite number | Canonical decimal (no exponent, no leading/trailing zeros: `1e6` → `1000000`, `-0` → `0`) |
+| Finite number in `[1e-6, 1e21)` (or zero) | Canonical decimal (e.g., `1e6` → `1000000`, `-0` → `0`) |
+| Finite number outside that range | Exponent form permitted (e.g., `1e-7`, `1e+21`) |
 | `NaN`, `Infinity`, `-Infinity` | `null` |
 | `BigInt` (within safe range) | Number |
 | `BigInt` (out of range) | Quoted decimal string (e.g., `"9007199254740993"`) |

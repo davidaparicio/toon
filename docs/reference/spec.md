@@ -32,7 +32,7 @@ TOON documents are always UTF‑8 with LF (`\n`) line endings; the optional `cha
 Defines key terms like "indentation level", "active delimiter", "strict mode", and RFC2119 keywords (MUST, SHOULD, MAY).
 
 [§2 Data Model](https://github.com/toon-format/spec/blob/main/SPEC.md#2-data-model):
-Specifies the JSON data model (objects, arrays, primitives), array/object ordering requirements, and canonical number formatting (no exponent notation, no leading/trailing zeros).
+Specifies the JSON data model (objects, arrays, primitives), array/object ordering requirements, and canonical number formatting (canonical decimal for values in `[1e-6, 1e21)` or zero; exponent form permitted outside).
 
 [§3 Encoding Normalization](https://github.com/toon-format/spec/blob/main/SPEC.md#3-encoding-normalization-reference-encoder):
 Defines how non-JSON types (Date, BigInt, NaN, Infinity, undefined, etc.) are normalized before encoding. Required reading for encoder implementers.
@@ -95,7 +95,7 @@ How the spec evolves: major vs minor bumps and the extensibility policy.
 Licensing and IP terms for the specification.
 
 [Appendix F: Host Type Normalization Examples](https://github.com/toon-format/spec/blob/main/SPEC.md#appendix-f-host-type-normalization-examples-informative):
-Non-normative guidance for Go, JavaScript, Python, and Rust implementations on normalizing language-specific types.
+Non-normative guidance for Go, JavaScript, Python, Rust, and Java implementations on normalizing language-specific types.
 
 [Appendix C: Test Suite and Compliance](https://github.com/toon-format/spec/blob/main/SPEC.md#appendix-c-test-suite-and-compliance-informative):
 Reference test suite at [github.com/toon-format/spec/tree/main/tests](https://github.com/toon-format/spec/tree/main/tests) for validating implementations.
@@ -127,8 +127,9 @@ Key requirements:
 - Quote strings with active delimiter, colon, or structural characters
 - Emit array lengths `[N]` matching actual count
 - Preserve object key order
-- Normalize numbers to non-exponential decimal form
+- Emit numbers per §2 (canonical decimal in `[1e-6, 1e21)` or zero; exponent form permitted outside)
 - Convert `-0` to `0`, `NaN`/±Infinity to `null`
+- Emit booleans and null as lowercase literals (`true`, `false`, `null`)
 - No trailing spaces or trailing newline
 - When `keyFolding="safe"` is enabled, folding MUST follow §13.4:
   - Only fold IdentifierSegment keys (letters/digits/underscores, no dots),
