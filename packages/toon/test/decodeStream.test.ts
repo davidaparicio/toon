@@ -200,6 +200,32 @@ describe('streaming decode', () => {
       expect(events).toEqual(Array.from(decodeStreamSync(lines)))
     })
 
+    it('locates the value after an escaped quoted key containing a colon', async () => {
+      const lines = ['"\\t:x": v']
+      const events = await collect(decodeStream(asyncLines(lines)))
+
+      expect(events).toEqual([
+        { type: 'startObject' },
+        { type: 'key', key: '\t:x', wasQuoted: true },
+        { type: 'primitive', value: 'v' },
+        { type: 'endObject' },
+      ])
+      expect(events).toEqual(Array.from(decodeStreamSync(lines)))
+    })
+
+    it('keeps a colon-bearing value such as a URL intact', async () => {
+      const lines = ['a: http://x']
+      const events = await collect(decodeStream(asyncLines(lines)))
+
+      expect(events).toEqual([
+        { type: 'startObject' },
+        { type: 'key', key: 'a' },
+        { type: 'primitive', value: 'http://x' },
+        { type: 'endObject' },
+      ])
+      expect(events).toEqual(Array.from(decodeStreamSync(lines)))
+    })
+
     it('rejects expandPaths option', async () => {
       const lines = ['name: Alice']
 
