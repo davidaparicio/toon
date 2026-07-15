@@ -1,6 +1,7 @@
 import type { JsonObject, JsonValue } from '../types.ts'
 import { DOT } from '../constants.ts'
 import { isJsonObject } from '../encode/normalize.ts'
+import { getOwnProperty, setOwnProperty } from '../shared/object-utils.ts'
 import { isIdentifierSegment } from '../shared/validation.ts'
 
 // #region Path expansion (safe)
@@ -73,7 +74,7 @@ export function expandPathsSafe(value: JsonValue, strict: boolean): JsonValue {
       const expandedValue = expandPathsSafe(keyValue, strict)
 
       // Check for conflicts with already-expanded keys
-      if (key in expandedObject) {
+      if (Object.hasOwn(expandedObject, key)) {
         const conflictingValue = expandedObject[key]!
         // If both are objects, try to merge them
         if (canMerge(conflictingValue, expandedValue)) {
@@ -87,12 +88,12 @@ export function expandPathsSafe(value: JsonValue, strict: boolean): JsonValue {
             )
           }
           // Non-strict: overwrite (LWW)
-          expandedObject[key] = expandedValue
+          setOwnProperty(expandedObject, key, expandedValue)
         }
       }
       else {
         // No conflict - insert directly
-        expandedObject[key] = expandedValue
+        setOwnProperty(expandedObject, key, expandedValue)
       }
     }
 
@@ -131,12 +132,12 @@ function insertPathSafe(
   // Walk to the penultimate segment, creating objects as needed
   for (let i = 0; i < segments.length - 1; i++) {
     const currentSegment = segments[i]!
-    const segmentValue = currentNode[currentSegment]
+    const segmentValue = getOwnProperty(currentNode, currentSegment)
 
     if (segmentValue === undefined) {
       // Create new intermediate object
       const newObj: JsonObject = {}
-      currentNode[currentSegment] = newObj
+      setOwnProperty(currentNode, currentSegment, newObj)
       currentNode = newObj
     }
     else if (isJsonObject(segmentValue)) {
@@ -152,18 +153,18 @@ function insertPathSafe(
       }
       // Non-strict: overwrite with new object
       const newObj: JsonObject = {}
-      currentNode[currentSegment] = newObj
+      setOwnProperty(currentNode, currentSegment, newObj)
       currentNode = newObj
     }
   }
 
   // Insert at the final segment
   const lastSeg = segments[segments.length - 1]!
-  const destinationValue = currentNode[lastSeg]
+  const destinationValue = getOwnProperty(currentNode, lastSeg)
 
   if (destinationValue === undefined) {
     // No conflict - insert directly
-    currentNode[lastSeg] = value
+    setOwnProperty(currentNode, lastSeg, value)
   }
   else if (canMerge(destinationValue, value)) {
     // Both are objects - deep merge
@@ -177,7 +178,7 @@ function insertPathSafe(
       )
     }
     // Non-strict: overwrite (LWW)
-    currentNode[lastSeg] = value
+    setOwnProperty(currentNode, lastSeg, value)
   }
 }
 
@@ -201,13 +202,14 @@ function mergeObjects(
   strict: boolean,
 ): void {
   for (const [key, sourceValue] of Object.entries(source)) {
-    const targetValue = target[key]
-
-    if (targetValue === undefined) {
+    if (!Object.hasOwn(target, key)) {
       // Key doesn't exist in target - copy it
-      target[key] = sourceValue
+      setOwnProperty(target, key, sourceValue)
+      continue
     }
-    else if (canMerge(targetValue, sourceValue)) {
+
+    const targetValue = target[key] as JsonValue
+    if (canMerge(targetValue, sourceValue)) {
       // Both are objects - recursively merge
       mergeObjects(targetValue as JsonObject, sourceValue as JsonObject, strict)
     }
@@ -219,7 +221,7 @@ function mergeObjects(
         )
       }
       // Non-strict: overwrite (LWW)
-      target[key] = sourceValue
+      setOwnProperty(target, key, sourceValue)
     }
   }
 }

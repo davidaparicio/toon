@@ -1,4 +1,5 @@
 import type { EncodeReplacer, JsonArray, JsonObject, JsonValue } from '../types.ts'
+import { setOwnProperty } from '../shared/object-utils.ts'
 import { isJsonArray, isJsonObject, normalizeValue } from './normalize.ts'
 
 /**
@@ -83,7 +84,7 @@ function transformObject(
     const normalizedValue = normalizeValue(replacedValue)
 
     // Recursively transform children of the replaced value
-    result[key] = transformChildren(normalizedValue, replacer, childPath)
+    setOwnProperty(result, key, transformChildren(normalizedValue, replacer, childPath))
   }
 
   return result

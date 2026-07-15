@@ -1,4 +1,5 @@
 import type { JsonArray, JsonObject, JsonPrimitive, JsonValue } from '../types.ts'
+import { setOwnProperty } from '../shared/object-utils.ts'
 
 // #region Normalization (unknown → JsonValue)
 
@@ -76,7 +77,7 @@ export function normalizeValue(value: unknown): JsonValue {
 
     for (const key in value) {
       if (Object.hasOwn(value, key)) {
-        encodedValues[key] = normalizeValue(value[key])
+        setOwnProperty(encodedValues, key, normalizeValue(value[key]))
       }
     }
 

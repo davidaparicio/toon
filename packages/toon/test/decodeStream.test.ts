@@ -38,6 +38,16 @@ describe('streaming decode', () => {
       ])
     })
 
+    it('materializes __proto__ as an own property', () => {
+      const prototypeKey = '__proto__'
+      const lines = ['__proto__:', '  safe: true']
+      const result = buildValueFromEvents(decodeStreamSync(lines)) as Record<string, unknown>
+
+      expect(Object.hasOwn(result, prototypeKey)).toBe(true)
+      expect(result[prototypeKey]).toEqual({ safe: true })
+      expect(Object.getPrototypeOf(result)).toBe(Object.prototype)
+    })
+
     it('decodes inline primitive array', () => {
       const input = 'scores[3]: 95, 87, 92'
       const lines = input.split('\n')
@@ -224,6 +234,17 @@ describe('streaming decode', () => {
         { type: 'endObject' },
       ])
       expect(events).toEqual(Array.from(decodeStreamSync(lines)))
+    })
+
+    it('materializes __proto__ as an own property', async () => {
+      const prototypeKey = '__proto__'
+      const lines = ['__proto__:', '  safe: true']
+      const events = await collect(decodeStream(asyncLines(lines)))
+      const result = await buildValueFromEventsAsync(asyncEvents(events)) as Record<string, unknown>
+
+      expect(Object.hasOwn(result, prototypeKey)).toBe(true)
+      expect(result[prototypeKey]).toEqual({ safe: true })
+      expect(Object.getPrototypeOf(result)).toBe(Object.prototype)
     })
 
     it('rejects expandPaths option', async () => {
