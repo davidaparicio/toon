@@ -132,6 +132,8 @@ export interface ArrayHeaderInfo {
   length: number
   delimiter: Delimiter
   fields?: FieldNode[]
+  /** Keyed tabular header `[N:<delim?>]` – N declares the entry count. */
+  keyed?: boolean
 }
 
 export interface ParsedLine {

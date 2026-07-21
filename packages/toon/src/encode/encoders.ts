@@ -20,6 +20,13 @@ export function* encodeJsonValue(value: JsonValue, options: ResolvedEncodeOption
     yield* encodeArrayLines(undefined, value, depth, options)
   }
   else if (isJsonObject(value)) {
+    // A keyed-eligible root object uses the keyless keyed form
+    const keyedFields = extractKeyedFields(value)
+    if (keyedFields) {
+      yield* encodeKeyedObjectLines(undefined, value, keyedFields, depth, options)
+      return
+    }
+
     yield* encodeObjectLines(value, depth, options)
   }
 }
@@ -53,10 +60,60 @@ export function* encodeKeyValuePairLines(
     yield* encodeArrayLines(key, value, depth, options)
   }
   else if (isJsonObject(value)) {
+    const keyedFields = extractKeyedFields(value)
+    if (keyedFields) {
+      yield* encodeKeyedObjectLines(key, value, keyedFields, depth, options)
+      return
+    }
+
     yield indentedLine(depth, `${encodedKey}:`, options.indent)
     if (!isEmptyObject(value)) {
       yield* encodeObjectLines(value, depth + 1, options)
     }
+  }
+}
+
+// #endregion
+
+// #region Keyed tabular objects
+
+export function extractKeyedFields(value: JsonObject): FieldNode[] | undefined {
+  const entryValues = Object.values(value)
+
+  // At least two entries whose values are uniform non-empty objects
+  if (entryValues.length < 2) {
+    return
+  }
+  if (!entryValues.every(entryValue => isJsonObject(entryValue) && !isEmptyObject(entryValue))) {
+    return
+  }
+
+  return extractTabularHeader(entryValues as JsonObject[])
+}
+
+function* encodeKeyedObjectLines(
+  key: string | undefined,
+  value: JsonObject,
+  fields: readonly FieldNode[],
+  depth: Depth,
+  options: ResolvedEncodeOptions,
+): Generator<string> {
+  const entries = Object.entries(value)
+  const header = formatHeader(entries.length, { key, fields, delimiter: options.delimiter, keyed: true })
+  yield indentedLine(depth, header, options.indent)
+  yield* encodeKeyedEntryRowsLines(entries, fields, depth + 1, options)
+}
+
+function* encodeKeyedEntryRowsLines(
+  entries: readonly [string, JsonValue][],
+  fields: readonly FieldNode[],
+  depth: Depth,
+  options: ResolvedEncodeOptions,
+): Generator<string> {
+  for (const [entryKey, entryValue] of entries) {
+    const leaves: JsonPrimitive[] = []
+    collectLeafValues(entryValue as JsonObject, fields, leaves)
+    yield indentedLine(depth, `${encodeKey(entryKey)}: ${encodeAndJoinPrimitives(leaves, options.delimiter)}`, options.indent)
   }
 }
 
@@ -273,6 +330,24 @@ export function* encodeObjectAsListItemLines(
       const formattedHeader = formatHeader(firstValue.length, { key: firstKey, fields: header, delimiter: options.delimiter })
       yield indentedListItem(depth, formattedHeader, options.indent)
       yield* writeTabularRowsLines(firstValue, header, depth + 2, options)
+
+      if (restEntries.length > 0) {
+        const restObj: JsonObject = Object.fromEntries(restEntries)
+        yield* encodeObjectLines(restObj, depth + 1, options)
+      }
+      return
+    }
+  }
+
+  // Check if first field is a keyed tabular object: header on the hyphen
+  // line, entry rows at depth +2, sibling fields at depth +1
+  if (isJsonObject(firstValue)) {
+    const keyedFields = extractKeyedFields(firstValue)
+    if (keyedFields) {
+      const keyedEntries = Object.entries(firstValue)
+      const formattedHeader = formatHeader(keyedEntries.length, { key: firstKey, fields: keyedFields, delimiter: options.delimiter, keyed: true })
+      yield indentedListItem(depth, formattedHeader, options.indent)
+      yield* encodeKeyedEntryRowsLines(keyedEntries, keyedFields, depth + 2, options)
 
       if (restEntries.length > 0) {
         const restObj: JsonObject = Object.fromEntries(restEntries)

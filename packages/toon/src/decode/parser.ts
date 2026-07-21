@@ -114,7 +114,7 @@ export function parseArrayHeaderLine(
     return
   }
 
-  const { length, delimiter } = parsedBracket
+  const { length, delimiter, keyed } = parsedBracket
 
   // Check for fields segment
   let fields: FieldNode[] | undefined
@@ -147,12 +147,26 @@ export function parseArrayHeaderLine(
     }
   }
 
+  if (keyed) {
+    if (!fields) {
+      if (strict)
+        throw new SyntaxError('Keyed header requires a fields segment')
+      return
+    }
+    if (afterColon) {
+      if (strict)
+        throw new SyntaxError('Unexpected content after keyed header colon')
+      return
+    }
+  }
+
   return {
     header: {
       key,
       length,
       delimiter,
       fields,
+      keyed,
     },
     inlineValues: afterColon || undefined,
   }
@@ -163,7 +177,7 @@ const BRACKET_LENGTH_PATTERN = /^(?:0|[1-9]\d*)$/
 export function parseBracketSegment(
   seg: string,
   defaultDelimiter: Delimiter,
-): { length: number, delimiter: Delimiter } {
+): { length: number, delimiter: Delimiter, keyed: boolean } {
   let content = seg
 
   // Check for delimiter suffix
@@ -177,11 +191,20 @@ export function parseBracketSegment(
     content = content.slice(0, -1)
   }
 
+  // A colon immediately after the length and before the optional delimiter
+  // symbol marks a keyed header: [N:], [N:<TAB>], [N:|]. Any other colon
+  // placement leaves a token that fails the length check below.
+  let keyed = false
+  if (content.endsWith(COLON)) {
+    keyed = true
+    content = content.slice(0, -1)
+  }
+
   if (!BRACKET_LENGTH_PATTERN.test(content)) {
     throw new SyntaxError(`Invalid array length: "${seg}" (expected non-negative integer with no leading zeros)`)
   }
 
-  return { length: Number.parseInt(content, 10), delimiter }
+  return { length: Number.parseInt(content, 10), delimiter, keyed }
 }
 
 /**
@@ -488,7 +511,7 @@ export function parseUnquotedKey(content: string, start: number): { key: string,
     throw new SyntaxError('Missing colon after key')
   }
 
-  const key = content.slice(start, parsePosition).trim()
+  const key = trimSpaces(content.slice(start, parsePosition))
 
   // Skip the colon
   parsePosition++

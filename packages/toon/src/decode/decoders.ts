@@ -1,7 +1,7 @@
 import type { ArrayHeaderInfo, DecodeStreamOptions, Depth, FieldNode, JsonPrimitive, JsonStreamEvent, ParsedLine } from '../types.ts'
 import type { StreamingScanState } from './scanner.ts'
 import { COLON, DEFAULT_DELIMITER, LIST_ITEM_MARKER, LIST_ITEM_PREFIX } from '../constants.ts'
-import { findClosingQuote, trimSpaces } from '../shared/string-utils.ts'
+import { findClosingQuote, findUnquotedChar, trimSpaces } from '../shared/string-utils.ts'
 import { ToonDecodeError, withLine } from './errors.ts'
 import { countLeafFields, isArrayHeaderContent, isKeyValueContent, mapRowValuesToPrimitives, parseArrayHeaderLine, parseDelimitedValues, parseKeyToken, parsePrimitiveToken } from './parser.ts'
 import { createScanState, parseLinesAsync, parseLinesSync } from './scanner.ts'
@@ -226,6 +226,15 @@ function* decodeKeyValueSync(
     return
   }
 
+  // The keyless keyed form is only valid as the document's root header;
+  // non-strict decoders fall through to key-value parsing
+  if (arrayHeader?.header.keyed && arrayHeader.header.key === undefined && options.strict) {
+    throw new ToonDecodeError(
+      'Keyless keyed header is only valid at the document root',
+      { line: line.lineNumber, source: line.raw },
+    )
+  }
+
   // Regular key-value pair
   const { key, end } = withLine(line, () => parseKeyToken(content, 0))
   const rest = trimSpaces(content.slice(end))
@@ -296,6 +305,12 @@ function* decodeArrayFromHeaderSync(
   options: DecoderContext,
   headerLine: ParsedLine,
 ): Generator<JsonStreamEvent> {
+  // Keyed tabular header: decodes to an object, not an array
+  if (header.keyed) {
+    yield* decodeKeyedObjectSync(header, cursor, baseDepth, options, headerLine)
+    return
+  }
+
   yield { type: 'startArray', length: header.length }
 
   // Inline primitive array
@@ -336,6 +351,88 @@ function* decodeInlinePrimitiveArraySync(
   for (const primitive of primitives) {
     yield { type: 'primitive', value: primitive }
   }
+}
+
+function* decodeKeyedObjectSync(
+  header: ArrayHeaderInfo,
+  cursor: StreamingLineCursor,
+  baseDepth: Depth,
+  options: DecoderContext,
+  headerLine: ParsedLine,
+): Generator<JsonStreamEvent> {
+  const entryDepth = baseDepth + 1
+  const leafFieldCount = countLeafFields(header.fields!)
+  const seenEntryKeys = options.strict ? new Set<string>() : undefined
+  let entryCount = 0
+  let startLine: number | undefined
+  let endLine: number | undefined
+  let lastEntryLine: ParsedLine = headerLine
+
+  yield { type: 'startObject' }
+
+  // A keyed scope ends only when the depth decreases to the header's
+  // depth or less, or at end of input; every line at entry depth with an
+  // unquoted colon is an entry row
+  while (!cursor.atEndSync()) {
+    const line = cursor.peekSync()
+    if (!line || line.depth <= baseDepth) {
+      break
+    }
+
+    if (line.depth > entryDepth) {
+      if (options.strict) {
+        throw new ToonDecodeError(
+          'Unexpected indentation inside keyed tabular object',
+          { line: line.lineNumber, source: line.raw },
+        )
+      }
+      cursor.advanceSync()
+      continue
+    }
+
+    if (findUnquotedChar(line.content, COLON) === -1) {
+      if (options.strict) {
+        throw new ToonDecodeError(
+          'Expected entry row inside keyed tabular object',
+          { line: line.lineNumber, source: line.raw },
+        )
+      }
+      cursor.advanceSync()
+      continue
+    }
+
+    cursor.advanceSync()
+    if (startLine === undefined) {
+      startLine = line.lineNumber
+    }
+    endLine = line.lineNumber
+    lastEntryLine = line
+
+    // Split at the first unquoted colon: entry key first, then the
+    // remainder splits on the active delimiter into cells
+    const { key, end } = withLine(line, () => parseKeyToken(line.content, 0))
+    assertNoDuplicateKey(key, line, seenEntryKeys)
+    yield { type: 'key', key }
+
+    const cellsContent = trimSpaces(line.content.slice(end))
+    const values = cellsContent === ''
+      ? []
+      : withLine(line, () => parseDelimitedValues(cellsContent, header.delimiter))
+    assertExpectedCount(values.length, leafFieldCount, 'keyed entry cells', options, line)
+
+    const primitives = withLine(line, () => mapRowValuesToPrimitives(values))
+    yield* yieldObjectFromFields(header.fields!, primitives)
+
+    entryCount++
+  }
+
+  assertExpectedCount(entryCount, header.length, 'keyed entries', options, lastEntryLine)
+
+  if (options.strict && startLine !== undefined && endLine !== undefined) {
+    validateNoBlankLinesInRange(startLine, endLine, cursor.getBlankLines(), options.strict, 'keyed tabular object')
+  }
+
+  yield { type: 'endObject' }
 }
 
 function* decodeTabularArraySync(
@@ -495,8 +592,19 @@ function* decodeListItemSync(
   if (isArrayHeaderContent(afterHyphen)) {
     const arrayHeader = withLine(itemLine, () => parseArrayHeaderLine(afterHyphen, DEFAULT_DELIMITER, options.strict))
     if (arrayHeader) {
-      yield* decodeArrayFromHeaderSync(arrayHeader.header, arrayHeader.inlineValues, cursor, baseDepth, options, itemLine)
-      return
+      // There is no keyless keyed list-item form (`- [N:]{fields}:`)
+      if (arrayHeader.header.keyed) {
+        if (options.strict) {
+          throw new ToonDecodeError(
+            'Keyless keyed header is only valid at the document root',
+            { line: line.lineNumber, source: line.raw },
+          )
+        }
+      }
+      else {
+        yield* decodeArrayFromHeaderSync(arrayHeader.header, arrayHeader.inlineValues, cursor, baseDepth, options, itemLine)
+        return
+      }
     }
   }
 
@@ -680,6 +788,15 @@ async function* decodeKeyValueAsync(
     return
   }
 
+  // The keyless keyed form is only valid as the document's root header;
+  // non-strict decoders fall through to key-value parsing
+  if (arrayHeader?.header.keyed && arrayHeader.header.key === undefined && options.strict) {
+    throw new ToonDecodeError(
+      'Keyless keyed header is only valid at the document root',
+      { line: line.lineNumber, source: line.raw },
+    )
+  }
+
   // Regular key-value pair
   const { key, end } = withLine(line, () => parseKeyToken(content, 0))
   const rest = trimSpaces(content.slice(end))
@@ -750,6 +867,12 @@ async function* decodeArrayFromHeaderAsync(
   options: DecoderContext,
   headerLine: ParsedLine,
 ): AsyncGenerator<JsonStreamEvent> {
+  // Keyed tabular header: decodes to an object, not an array
+  if (header.keyed) {
+    yield* decodeKeyedObjectAsync(header, cursor, baseDepth, options, headerLine)
+    return
+  }
+
   yield { type: 'startArray', length: header.length }
 
   // Inline primitive array
@@ -769,6 +892,88 @@ async function* decodeArrayFromHeaderAsync(
   // List array
   yield* decodeListArrayAsync(header, cursor, baseDepth, options, headerLine)
   yield { type: 'endArray' }
+}
+
+async function* decodeKeyedObjectAsync(
+  header: ArrayHeaderInfo,
+  cursor: StreamingLineCursor,
+  baseDepth: Depth,
+  options: DecoderContext,
+  headerLine: ParsedLine,
+): AsyncGenerator<JsonStreamEvent> {
+  const entryDepth = baseDepth + 1
+  const leafFieldCount = countLeafFields(header.fields!)
+  const seenEntryKeys = options.strict ? new Set<string>() : undefined
+  let entryCount = 0
+  let startLine: number | undefined
+  let endLine: number | undefined
+  let lastEntryLine: ParsedLine = headerLine
+
+  yield { type: 'startObject' }
+
+  // A keyed scope ends only when the depth decreases to the header's
+  // depth or less, or at end of input; every line at entry depth with an
+  // unquoted colon is an entry row
+  while (!(await cursor.atEnd())) {
+    const line = await cursor.peek()
+    if (!line || line.depth <= baseDepth) {
+      break
+    }
+
+    if (line.depth > entryDepth) {
+      if (options.strict) {
+        throw new ToonDecodeError(
+          'Unexpected indentation inside keyed tabular object',
+          { line: line.lineNumber, source: line.raw },
+        )
+      }
+      await cursor.advance()
+      continue
+    }
+
+    if (findUnquotedChar(line.content, COLON) === -1) {
+      if (options.strict) {
+        throw new ToonDecodeError(
+          'Expected entry row inside keyed tabular object',
+          { line: line.lineNumber, source: line.raw },
+        )
+      }
+      await cursor.advance()
+      continue
+    }
+
+    await cursor.advance()
+    if (startLine === undefined) {
+      startLine = line.lineNumber
+    }
+    endLine = line.lineNumber
+    lastEntryLine = line
+
+    // Split at the first unquoted colon: entry key first, then the
+    // remainder splits on the active delimiter into cells
+    const { key, end } = withLine(line, () => parseKeyToken(line.content, 0))
+    assertNoDuplicateKey(key, line, seenEntryKeys)
+    yield { type: 'key', key }
+
+    const cellsContent = trimSpaces(line.content.slice(end))
+    const values = cellsContent === ''
+      ? []
+      : withLine(line, () => parseDelimitedValues(cellsContent, header.delimiter))
+    assertExpectedCount(values.length, leafFieldCount, 'keyed entry cells', options, line)
+
+    const primitives = withLine(line, () => mapRowValuesToPrimitives(values))
+    yield* yieldObjectFromFields(header.fields!, primitives)
+
+    entryCount++
+  }
+
+  assertExpectedCount(entryCount, header.length, 'keyed entries', options, lastEntryLine)
+
+  if (options.strict && startLine !== undefined && endLine !== undefined) {
+    validateNoBlankLinesInRange(startLine, endLine, cursor.getBlankLines(), options.strict, 'keyed tabular object')
+  }
+
+  yield { type: 'endObject' }
 }
 
 async function* decodeTabularArrayAsync(
@@ -928,8 +1133,19 @@ async function* decodeListItemAsync(
   if (isArrayHeaderContent(afterHyphen)) {
     const arrayHeader = withLine(itemLine, () => parseArrayHeaderLine(afterHyphen, DEFAULT_DELIMITER, options.strict))
     if (arrayHeader) {
-      yield* decodeArrayFromHeaderAsync(arrayHeader.header, arrayHeader.inlineValues, cursor, baseDepth, options, itemLine)
-      return
+      // There is no keyless keyed list-item form (`- [N:]{fields}:`)
+      if (arrayHeader.header.keyed) {
+        if (options.strict) {
+          throw new ToonDecodeError(
+            'Keyless keyed header is only valid at the document root',
+            { line: line.lineNumber, source: line.raw },
+          )
+        }
+      }
+      else {
+        yield* decodeArrayFromHeaderAsync(arrayHeader.header, arrayHeader.inlineValues, cursor, baseDepth, options, itemLine)
+        return
+      }
     }
   }
 

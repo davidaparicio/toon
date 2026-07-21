@@ -59,6 +59,8 @@ export function formatHeader(
     key?: string
     fields?: readonly FieldNode[]
     delimiter?: string
+    /** Keyed tabular header: emit the colon marker after the length. */
+    keyed?: boolean
   },
 ): string {
   const key = options?.key
@@ -72,7 +74,7 @@ export function formatHeader(
   }
 
   // Only include delimiter if it's not the default (comma)
-  header += `[${length}${delimiter !== DEFAULT_DELIMITER ? delimiter : ''}]`
+  header += `[${length}${options?.keyed ? ':' : ''}${delimiter !== DEFAULT_DELIMITER ? delimiter : ''}]`
 
   if (fields) {
     header += `{${formatFieldSegment(fields, delimiter)}}`
