@@ -94,7 +94,7 @@ src/
 ├── constants.ts                  # Configuration
 ├── datasets.ts                   # Test data generators
 ├── evaluate.ts                   # LLM evaluation
-├── formatters.ts                 # Format converters
+├── formats.ts                    # Format registry (converters, primers, fences, labels)
 ├── normalize.ts                  # Answer normalization
 ├── report.ts                     # Markdown reports
 ├── storage.ts                    # Result caching

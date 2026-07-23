@@ -1,8 +1,9 @@
+import type { Format } from './formats.ts'
 import type { Dataset, EfficiencyRanking, EvaluationResult, FormatResult, Question } from './types.ts'
-import { FORMATTER_DISPLAY_NAMES, QUESTION_TYPE_LABELS, QUESTION_TYPES } from './constants.ts'
+import { QUESTION_TYPE_LABELS, QUESTION_TYPES } from './constants.ts'
 import { ACCURACY_DATASETS } from './datasets.ts'
-import { models, PRIMERS } from './evaluate.ts'
-import { supportsCSV } from './formatters.ts'
+import { models } from './evaluate.ts'
+import { FORMATS, getFormat, supportsCSV } from './formats.ts'
 import { generateQuestions } from './questions/index.ts'
 import { createProgressBar, tokenize } from './utils.ts'
 
@@ -15,18 +16,18 @@ const EFFICIENCY_CHART_STYLE: 'vertical' | 'horizontal' = 'horizontal'
  * Includes primer tokens for fairer comparison across formats
  */
 export function calculateTokenCounts(
-  formatters: Record<string, (data: unknown) => string>,
+  formats: Record<string, Format>,
 ): Record<string, number> {
   const tokenCounts: Record<string, number> = {}
 
-  for (const [formatName, formatter] of Object.entries(formatters)) {
+  for (const [formatName, format] of Object.entries(formats)) {
     for (const dataset of ACCURACY_DATASETS) {
       // Skip CSV for datasets that don't support it
       if (formatName === 'csv' && !supportsCSV(dataset))
         continue
 
-      const formattedData = formatter(dataset.data)
-      const primer = PRIMERS[formatName] ?? ''
+      const formattedData = format.encode(dataset.data)
+      const primer = format.primer
       // Include primer in token count for fair comparison
       const fullPrompt = primer ? `${primer}\n\n${formattedData}` : formattedData
       const key = `${formatName}-${dataset.name}`
@@ -335,7 +336,7 @@ ${totalQuestions} questions are generated dynamically across five categories:
 
 #### Evaluation Process
 
-1. **Format conversion**: Each dataset is converted to all ${formatCount} formats (${formatResults.map(f => FORMATTER_DISPLAY_NAMES[f.format] || f.format).join(', ')}).
+1. **Format conversion**: Each dataset is converted to all ${formatCount} formats (${formatResults.map(f => getFormat(f.format).displayName).join(', ')}).
 2. **Query LLM**: Each model receives formatted data + question in a prompt and extracts the answer.
 3. **Validate deterministically**: Answers are validated using type-aware comparison (e.g., \`50000\` = \`$50,000\`, \`Engineering\` = \`engineering\`, \`2025-01-01\` = \`January 1, 2025\`) without requiring an LLM judge.
 
@@ -357,7 +358,7 @@ function generateModelBreakdown(
   modelNames: string[],
 ): string {
   const maxDisplayNameWidth = Math.max(
-    ...Object.values(FORMATTER_DISPLAY_NAMES).map(name => name.length),
+    ...Object.values(FORMATS).map(format => format.displayName.length),
   )
   const progressBarWidth = 20
 
@@ -381,7 +382,7 @@ function generateModelBreakdown(
       const accuracyString = `${(result.accuracy * 100).toFixed(1)}%`.padStart(6)
       const countString = `(${result.correctCount}/${result.totalCount})`
       const prefix = result.format === 'toon' ? '→ ' : '  '
-      const displayName = FORMATTER_DISPLAY_NAMES[result.format] || result.format
+      const displayName = getFormat(result.format).displayName
       return `${prefix}${displayName.padEnd(maxDisplayNameWidth)}   ${bar}   ${accuracyString} ${countString}`
     }).join('\n')
 
@@ -478,7 +479,7 @@ function generateQuestionTypeBreakdown(
   questions: Question[],
 ): string {
   // Build header
-  const formatNames = formatResults.map(fr => FORMATTER_DISPLAY_NAMES[fr.format] || fr.format)
+  const formatNames = formatResults.map(fr => getFormat(fr.format).displayName)
   const header = `| Question Type | ${formatNames.join(' | ')} |`
   const separator = `| ------------- | ${formatNames.map(() => '----').join(' | ')} |`
 
@@ -557,7 +558,7 @@ function generateHorizontalEfficiencyChart(
   const barWidth = 20
   const maxEfficiency = Math.max(...ranking.map(r => r.efficiency))
   const maxFormatWidth = Math.max(...ranking.map((r) => {
-    const displayName = FORMATTER_DISPLAY_NAMES[r.format] || r.format
+    const displayName = getFormat(r.format).displayName
     return displayName.length
   }))
 
@@ -565,7 +566,7 @@ function generateHorizontalEfficiencyChart(
     .map((r) => {
       const normalizedValue = r.efficiency / maxEfficiency
       const bar = createProgressBar(normalizedValue, 1, barWidth)
-      const displayName = FORMATTER_DISPLAY_NAMES[r.format] || r.format
+      const displayName = getFormat(r.format).displayName
       const formatName = displayName.padEnd(maxFormatWidth)
       const efficiency = r.efficiency.toFixed(1).padStart(4)
       const accuracy = `${(r.accuracy * 100).toFixed(1)}%`.padStart(5)

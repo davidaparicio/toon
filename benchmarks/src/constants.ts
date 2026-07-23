@@ -40,18 +40,6 @@ export const MODEL_RPM_LIMITS: Record<string, number | undefined> = {
 }
 
 /**
- * Display names for data format types
- */
-export const FORMATTER_DISPLAY_NAMES: Record<string, string> = {
-  'json-pretty': 'JSON',
-  'json-compact': 'JSON compact',
-  'toon': 'TOON',
-  'csv': 'CSV',
-  'xml': 'XML',
-  'yaml': 'YAML',
-} as const
-
-/**
  * Question type identifiers
  */
 export const QUESTION_TYPES = [

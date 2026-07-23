@@ -1,3 +1,4 @@
+import type { Format } from '../src/formats.ts'
 import type { Question } from '../src/types.ts'
 import * as fsp from 'node:fs/promises'
 import * as path from 'node:path'
@@ -7,7 +8,7 @@ import PQueue from 'p-queue'
 import { BENCHMARKS_DIR, DEFAULT_CONCURRENCY, DRY_RUN, DRY_RUN_LIMITS, MODEL_RPM_LIMITS, ROOT_DIR } from '../src/constants.ts'
 import { ACCURACY_DATASETS } from '../src/datasets.ts'
 import { evaluateQuestion, models } from '../src/evaluate.ts'
-import { formatters, supportsCSV } from '../src/formatters.ts'
+import { FORMATS, supportsCSV } from '../src/formats.ts'
 import { generateQuestions } from '../src/questions/index.ts'
 import { calculateFormatResults, calculateTokenCounts, generateAccuracyReport } from '../src/report.ts'
 import { getAllModelResults, hasModelResults, saveModelResults } from '../src/storage.ts'
@@ -22,17 +23,17 @@ prompts.intro('Retrieval Accuracy Benchmark')
 /**
  * Generate evaluation tasks for a model
  */
-function generateEvaluationTasks(questions: Question[]): { question: Question, formatName: string }[] {
-  const tasks: { question: Question, formatName: string }[] = []
+function generateEvaluationTasks(questions: Question[]): { question: Question, format: Format }[] {
+  const tasks: { question: Question, format: Format }[] = []
 
   for (const question of questions) {
-    for (const [formatName] of Object.entries(formatters)) {
+    for (const format of Object.values(FORMATS)) {
       // Skip CSV for datasets that don't support it
       const dataset = ACCURACY_DATASETS.find(d => d.name === question.dataset)
-      if (formatName === 'csv' && dataset && !supportsCSV(dataset))
+      if (format.name === 'csv' && dataset && !supportsCSV(dataset))
         continue
 
-      tasks.push({ question, formatName })
+      tasks.push({ question, format })
     }
   }
 
@@ -122,7 +123,7 @@ if (DRY_RUN && DRY_RUN_LIMITS.maxQuestions) {
 }
 
 prompts.log.info(`Evaluating ${questions.length} questions`)
-prompts.log.info(`Testing ${Object.keys(formatters).length} formats`)
+prompts.log.info(`Testing ${Object.keys(FORMATS).length} formats`)
 
 // Evaluate each model separately and save results incrementally
 for (const model of activeModels) {
@@ -153,12 +154,11 @@ for (const model of activeModels) {
     queue.add(async () => {
       // Format data on-demand
       const dataset = ACCURACY_DATASETS.find(d => d.name === task.question.dataset)!
-      const formatter = formatters[task.formatName]!
-      const formattedData = formatter(dataset.data)
+      const formattedData = task.format.encode(dataset.data)
 
       const result = await evaluateQuestion({
         question: task.question,
-        formatName: task.formatName,
+        format: task.format,
         formattedData,
         model,
       })
@@ -193,7 +193,7 @@ if (allResults.length === 0) {
   process.exit(0)
 }
 
-const tokenCounts = calculateTokenCounts(formatters)
+const tokenCounts = calculateTokenCounts(FORMATS)
 const formatResults = calculateFormatResults(allResults, tokenCounts)
 const accuracyReport = generateAccuracyReport(allResults, formatResults, tokenCounts)
 

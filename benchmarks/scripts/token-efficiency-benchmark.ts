@@ -3,9 +3,9 @@ import * as fsp from 'node:fs/promises'
 import * as path from 'node:path'
 import * as prompts from '@clack/prompts'
 import { encode } from '../../packages/toon/src/index.ts'
-import { BENCHMARKS_DIR, FORMATTER_DISPLAY_NAMES, ROOT_DIR } from '../src/constants.ts'
+import { BENCHMARKS_DIR, ROOT_DIR } from '../src/constants.ts'
 import { TOKEN_EFFICIENCY_DATASETS } from '../src/datasets.ts'
-import { formatters, supportsCSV } from '../src/formatters.ts'
+import { FORMATS, getFormat, supportsCSV } from '../src/formats.ts'
 import { createProgressBar, ensureDir, tokenize } from '../src/utils.ts'
 
 interface FormatMetrics {
@@ -48,7 +48,7 @@ prompts.intro('Token Efficiency Benchmark')
  * Format a comparison line showing savings vs TOON
  */
 function formatComparisonLine(format: FormatMetrics, isLast: boolean = false): string {
-  const label = FORMATTER_DISPLAY_NAMES[format.name] || format.name.toUpperCase()
+  const label = getFormat(format.name).displayName
   const signedPercent = format.savingsPercent >= 0
     ? `−${format.savingsPercent.toFixed(1)}%`
     : `+${Math.abs(format.savingsPercent).toFixed(1)}%`
@@ -164,14 +164,14 @@ for (const dataset of TOKEN_EFFICIENCY_DATASETS) {
   const tokensByFormat: Record<string, number> = {}
 
   // Calculate tokens for each format
-  for (const [formatName, formatter] of Object.entries(formatters)) {
+  for (const format of Object.values(FORMATS)) {
     // Skip CSV for datasets that don't support it
-    if (formatName === 'csv' && !supportsCSV(dataset))
+    if (format.name === 'csv' && !supportsCSV(dataset))
       continue
 
-    const formattedData = formatter(dataset.data)
+    const formattedData = format.encode(dataset.data)
     const tokens = tokenize(formattedData)
-    tokensByFormat[formatName] = tokens
+    tokensByFormat[format.name] = tokens
   }
 
   // Calculate savings vs TOON

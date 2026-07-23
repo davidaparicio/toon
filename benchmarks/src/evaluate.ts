@@ -1,4 +1,5 @@
 import type { LanguageModelV4 } from '@ai-sdk/provider'
+import type { Format } from './formats.ts'
 import type { EvaluationResult, Question } from './types.ts'
 import { anthropic } from '@ai-sdk/anthropic'
 import { google } from '@ai-sdk/google'
@@ -18,58 +19,28 @@ export const models: LanguageModelV4[] = [
 ]
 
 /**
- * Format primers
- *
- * @remarks
- * Neutral descriptions to help models parse each format.
- */
-export const PRIMERS: Record<string, string> = {
-  'toon': 'TOON: Indentation-based. Arrays declare length and fields (e.g., items[N]{f1,f2}:). Rows use single delimiter. Values may be quoted.',
-  'json-pretty': 'JSON: Strict JSON objects/arrays with repeated keys per row.',
-  'json-compact': 'JSON (compact): Strict JSON without extra whitespace.',
-  'yaml': 'YAML: Indentation-based key/value and lists (- items).',
-  'xml': 'XML: Tag-based tree structure with nested elements.',
-  'csv': 'CSV: Header row, comma-separated values. First row contains field names.',
-}
-
-/**
- * Code fence language tags for proper syntax highlighting
- */
-export const FENCE: Record<string, string> = {
-  'toon': 'toon',
-  'json-pretty': 'json',
-  'json-compact': 'json',
-  'yaml': 'yaml',
-  'xml': 'xml',
-  'csv': 'csv',
-}
-
-/**
  * Evaluate a single question with a specific format and model
  */
 export async function evaluateQuestion(
   {
     question,
-    formatName,
+    format,
     formattedData,
     model,
   }:
   {
     question: Question
-    formatName: string
+    format: Format
     formattedData: string
     model: LanguageModelV4
   },
 ): Promise<EvaluationResult> {
-  const primer = PRIMERS[formatName] ?? ''
-  const fence = FENCE[formatName] ?? ''
-
   const prompt = `
-${primer}
+${format.primer}
 
-Given the following data in ${formatName} format:
+Given the following data in ${format.name} format:
 
-\`\`\`${fence}
+\`\`\`${format.fence}
 ${formattedData}
 \`\`\`
 
@@ -109,7 +80,7 @@ Answer:
 
   return {
     questionId: question.id,
-    format: formatName,
+    format: format.name,
     model: model.modelId,
     expected: question.groundTruth,
     actual,
