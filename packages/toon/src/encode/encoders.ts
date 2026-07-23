@@ -3,6 +3,7 @@ import type { EncodablePrimitive } from './raw-string.ts'
 import { LIST_ITEM_MARKER, LIST_ITEM_PREFIX } from '../constants.ts'
 import { isArrayOfArrays, isArrayOfObjects, isArrayOfPrimitives, isEmptyObject, isEncodablePrimitive, isJsonArray, isJsonObject } from './normalize.ts'
 import { encodeAndJoinPrimitives, encodeKey, encodePrimitive, formatHeader } from './primitives.ts'
+import { collectRowLeaves, extractKeyedFields, extractTabularHeader } from './tabular.ts'
 
 // #region Encode normalized JsonValue
 
@@ -78,20 +79,6 @@ function* encodeKeyValuePairLines(
 
 // #region Keyed tabular objects
 
-function extractKeyedFields(value: JsonObject): FieldNode[] | undefined {
-  const entryValues = Object.values(value)
-
-  // At least two entries whose values are uniform non-empty objects
-  if (entryValues.length < 2) {
-    return
-  }
-  if (!entryValues.every(entryValue => isJsonObject(entryValue) && !isEmptyObject(entryValue))) {
-    return
-  }
-
-  return extractTabularHeader(entryValues as JsonObject[])
-}
-
 function* encodeKeyedObjectLines(
   key: string | undefined,
   value: JsonObject,
@@ -112,8 +99,7 @@ function* encodeKeyedEntryRowsLines(
   options: ResolvedEncodeOptions,
 ): Generator<string> {
   for (const [entryKey, entryValue] of entries) {
-    const leaves: EncodablePrimitive[] = []
-    collectLeafValues(entryValue as JsonObject, fields, leaves)
+    const leaves = collectRowLeaves(entryValue as JsonObject, fields)
     yield indentedLine(depth, `${encodeKey(entryKey)}: ${encodeAndJoinPrimitives(leaves, options.delimiter)}`, options.indent)
   }
 }
@@ -211,70 +197,6 @@ function* encodeArrayOfObjectsAsTabularLines(
   yield* writeTabularRowsLines(rows, header, depth + 1, options)
 }
 
-function extractTabularHeader(rows: readonly JsonObject[]): FieldNode[] | undefined {
-  if (rows.length === 0)
-    return
-
-  const firstKeys = Object.keys(rows[0]!)
-  if (firstKeys.length === 0)
-    return
-
-  // All objects must have the same set of keys (order per object may vary)
-  for (const row of rows) {
-    if (Object.keys(row).length !== firstKeys.length) {
-      return
-    }
-    for (const key of firstKeys) {
-      if (!Object.hasOwn(row, key)) {
-        return
-      }
-    }
-  }
-
-  const fieldNodes: FieldNode[] = []
-  for (const key of firstKeys) {
-    const fieldNode = classifyColumn(key, rows.map(row => row[key]!))
-    if (!fieldNode) {
-      return
-    }
-    fieldNodes.push(fieldNode)
-  }
-
-  return fieldNodes
-}
-
-function classifyColumn(name: string, values: readonly JsonValue[]): FieldNode | undefined {
-  // Uniform-primitive column: a bare leaf field
-  if (values.every(value => isEncodablePrimitive(value))) {
-    return { name }
-  }
-
-  // Nested-uniform column: every value a non-empty object sharing one key
-  // set whose sub-columns classify recursively
-  if (!values.every(value => isJsonObject(value) && !isEmptyObject(value))) {
-    return
-  }
-
-  const children = extractTabularHeader(values as JsonObject[])
-  if (!children) {
-    return
-  }
-
-  return { name, children }
-}
-
-function collectLeafValues(row: JsonObject, fields: readonly FieldNode[], leaves: EncodablePrimitive[]): void {
-  for (const field of fields) {
-    const value = row[field.name]
-    if (field.children) {
-      collectLeafValues(value as JsonObject, field.children, leaves)
-    }
-    else {
-      leaves.push(value as EncodablePrimitive)
-    }
-  }
-}
-
 function* writeTabularRowsLines(
   rows: readonly JsonObject[],
   header: readonly FieldNode[],
@@ -282,8 +204,7 @@ function* writeTabularRowsLines(
   options: ResolvedEncodeOptions,
 ): Generator<string> {
   for (const row of rows) {
-    const leaves: EncodablePrimitive[] = []
-    collectLeafValues(row, header, leaves)
+    const leaves = collectRowLeaves(row, header)
     yield indentedLine(depth, encodeAndJoinPrimitives(leaves, options.delimiter), options.indent)
   }
 }
